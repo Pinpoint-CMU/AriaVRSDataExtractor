@@ -1,6 +1,7 @@
-#!/bin/env bash
+#!/bin/bash
 for var in "$@"
 do
+  dir=$(dirname -- "$var")
   filename=$(basename -- "$var")
   sqlite3 -header -csv "$var" "SELECT \
     timestamp, \
@@ -13,7 +14,7 @@ do
     raw_magnetic_x as magX, \
     raw_magnetic_y as magY, \
     raw_magnetic_z as magZ \
-    FROM imu;" > "$filename"_imu.csv
+    FROM imu;" > "$dir/$filename"_imu.csv
   sqlite3 -header -csv "$var" "SELECT \
     timestamp, \
     major, \
@@ -22,5 +23,5 @@ do
     FROM beacons \
     WHERE major = 65502 \
     AND rssi != 0 \
-    ;" > "$filename"_ble.csv
+    ;" > "$dir/$filename"_ble.csv
 done
