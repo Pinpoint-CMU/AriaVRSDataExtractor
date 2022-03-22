@@ -65,11 +65,10 @@ class AlignmentWindow(QtWidgets.QMainWindow):
 
         toolbar = NavigationToolbar(self.canvas, self)
 
-        vbox.addWidget(toolbar)
-        vbox.addWidget(self.canvas)
-
         wbox_imus = QtWidgets.QHBoxLayout()
+
         vbox_db = QtWidgets.QVBoxLayout()
+        self.db_title = QtWidgets.QLabel()
         db_group = QtWidgets.QButtonGroup(widget)
         db_accX_btn = QtWidgets.QRadioButton("AccX")
         db_accX_btn.setChecked(True)
@@ -86,8 +85,6 @@ class AlignmentWindow(QtWidgets.QMainWindow):
         db_radiogroup.addWidget(db_accY_btn)
         db_radiogroup.addWidget(db_accZ_btn)
         db_radiogroup.addStretch(1)
-        vbox_db.addWidget(QtWidgets.QLabel("Phone"))
-        vbox_db.addLayout(db_radiogroup)
         db_offset = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         db_offset.setMinimum(0)
         db_offset.setMaximum(100)
@@ -96,8 +93,13 @@ class AlignmentWindow(QtWidgets.QMainWindow):
         db_offset.valueChanged.connect(
             lambda: self.db_offset_changed(db_offset.value())
         )
+        vbox_db.addWidget(self.db_title)
+        vbox_db.addWidget(QtWidgets.QLabel("Phone"))
+        vbox_db.addLayout(db_radiogroup)
         vbox_db.addWidget(db_offset)
+
         vbox_aria = QtWidgets.QVBoxLayout()
+        self.aria_title = QtWidgets.QLabel()
         aria_group = QtWidgets.QButtonGroup(widget)
         aria_accX_btn = QtWidgets.QRadioButton("AccX")
         aria_accX_btn.setChecked(True)
@@ -114,8 +116,6 @@ class AlignmentWindow(QtWidgets.QMainWindow):
         aria_radiogroup.addWidget(aria_accY_btn)
         aria_radiogroup.addWidget(aria_accZ_btn)
         aria_radiogroup.addStretch(1)
-        vbox_aria.addWidget(QtWidgets.QLabel("Aria"))
-        vbox_aria.addLayout(aria_radiogroup)
         aria_offset = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         aria_offset.setMinimum(0)
         aria_offset.setMaximum(100)
@@ -124,10 +124,16 @@ class AlignmentWindow(QtWidgets.QMainWindow):
         aria_offset.valueChanged.connect(
             lambda: self.aria_offset_changed(aria_offset.value())
         )
+        vbox_aria.addWidget(self.aria_title)
+        vbox_aria.addWidget(QtWidgets.QLabel("Aria"))
+        vbox_aria.addLayout(aria_radiogroup)
         vbox_aria.addWidget(aria_offset)
+
         wbox_imus.addLayout(vbox_db)
         wbox_imus.addLayout(vbox_aria)
 
+        vbox.addWidget(toolbar)
+        vbox.addWidget(self.canvas)
         vbox.addLayout(wbox_imus)
 
     def db_offset_changed(self, value):
@@ -160,6 +166,8 @@ class AlignmentWindow(QtWidgets.QMainWindow):
                 self.aria_imu_data[:, self.aria_axis],
             )
             self.canvas.draw()
+            self.db_title.setText(self.matches[self.idx][0].split("/")[-1])
+            self.aria_title.setText(self.matches[self.idx][1].split("/")[-1])
 
 
 def match(file: Path, against_files: List[Path]) -> Path:
