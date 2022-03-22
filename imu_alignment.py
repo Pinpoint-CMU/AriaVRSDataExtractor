@@ -23,19 +23,38 @@ class Canvas(FigCanvas):
 
 
 class AlignmentWindow(QtWidgets.QMainWindow):
-    def __init__(self, phone_imu_data, aria_imu_data, *args, **kwargs):
+    def __init__(self, matches: List[Tuple[str, str]], *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.canvas = Canvas()
-        self.phone_imu_data = phone_imu_data
-        self.aria_imu_data = aria_imu_data
         self.phone_axis = 1
         self.aria_axis = 1
         self.db_offset = 0
         self.aria_offset = 0
+        self.phone_imu_data = None
+        self.aria_imu_data = None
 
         self.create_main_panel()
         self.draw_figure()
         self.show()
+        self.idx = 0
+        self.matches = matches
+        process(self, self.matches[self.idx])
+
+    def closeEvent(self, event):
+        global idx, matches
+        if self.idx < len(matches) - 1:
+            print(self.db_offset, self.aria_offset)
+            self.idx += 1
+            process(self, self.matches[self.idx])
+            event.ignore()
+        else:
+            print(self.db_offset, self.aria_offset)
+            event.accept()
+
+    def set_data(self, phone_imu_data, aria_imu_data):
+        self.phone_imu_data = phone_imu_data
+        self.aria_imu_data = aria_imu_data
+        self.draw_figure()
 
     def create_main_panel(self):
 
@@ -66,6 +85,7 @@ class AlignmentWindow(QtWidgets.QMainWindow):
         db_radiogroup.addWidget(db_accX_btn)
         db_radiogroup.addWidget(db_accY_btn)
         db_radiogroup.addWidget(db_accZ_btn)
+        db_radiogroup.addStretch(1)
         vbox_db.addWidget(QtWidgets.QLabel("Phone"))
         vbox_db.addLayout(db_radiogroup)
         db_offset = QtWidgets.QSlider(QtCore.Qt.Horizontal)
@@ -93,6 +113,7 @@ class AlignmentWindow(QtWidgets.QMainWindow):
         aria_radiogroup.addWidget(aria_accX_btn)
         aria_radiogroup.addWidget(aria_accY_btn)
         aria_radiogroup.addWidget(aria_accZ_btn)
+        aria_radiogroup.addStretch(1)
         vbox_aria.addWidget(QtWidgets.QLabel("Aria"))
         vbox_aria.addLayout(aria_radiogroup)
         aria_offset = QtWidgets.QSlider(QtCore.Qt.Horizontal)
@@ -104,47 +125,41 @@ class AlignmentWindow(QtWidgets.QMainWindow):
             lambda: self.aria_offset_changed(aria_offset.value())
         )
         vbox_aria.addWidget(aria_offset)
-        wbox_imus.addStretch(1)
         wbox_imus.addLayout(vbox_db)
-        wbox_imus.addStretch(1)
         wbox_imus.addLayout(vbox_aria)
-        wbox_imus.addStretch(1)
 
         vbox.addLayout(wbox_imus)
 
     def db_offset_changed(self, value):
-        print("DB offset:", value)
         self.db_offset = value
         self.draw_figure()
 
     def aria_offset_changed(self, value):
-        print("Aria offset:", value)
         self.aria_offset = value
         self.draw_figure()
 
     def replot_aria(self, btn, aria_axis):
         if btn.isChecked() == True:
-            print("Aria axis", aria_axis)
             self.aria_axis = aria_axis
             self.draw_figure()
 
     def replot_phone(self, btn, phone_axis):
         if btn.isChecked() == True:
-            print("Phone axis", phone_axis)
             self.phone_axis = phone_axis
             self.draw_figure()
 
     def draw_figure(self):
-        self.canvas.axes.clear()
-        self.canvas.axes.plot(
-            self.phone_imu_data[:, 0] + self.db_offset,
-            self.phone_imu_data[:, self.phone_axis],
-        )
-        self.canvas.axes.plot(
-            self.aria_imu_data[:, 0] + self.aria_offset,
-            self.aria_imu_data[:, self.aria_axis],
-        )
-        self.canvas.draw()
+        if self.phone_imu_data is not None and self.aria_imu_data is not None:
+            self.canvas.axes.clear()
+            self.canvas.axes.plot(
+                self.phone_imu_data[:, 0] + self.db_offset,
+                self.phone_imu_data[:, self.phone_axis],
+            )
+            self.canvas.axes.plot(
+                self.aria_imu_data[:, 0] + self.aria_offset,
+                self.aria_imu_data[:, self.aria_axis],
+            )
+            self.canvas.draw()
 
 
 def match(file: Path, against_files: List[Path]) -> Path:
@@ -182,7 +197,7 @@ def dir_match(dir: Path) -> List[Tuple[str, str]]:
     return matches
 
 
-def process(match: Tuple[str, str]):
+def process(window: AlignmentWindow, match: Tuple[str, str]):
     time_map_reader = csv.DictReader(open(match[1] + "_Time_1.csv", "r"))
     time_map_0, time_map_1 = time_map_reader.__next__(), time_map_reader.__next__()
     time_map_scale = (float(time_map_1["realtime"]) - float(time_map_0["realtime"])) / (
@@ -191,15 +206,20 @@ def process(match: Tuple[str, str]):
     time_map_offset = float(time_map_0["realtime"]) - time_map_scale * float(
         time_map_0["timestamp"]
     )
-    offset = peak_align(
+    peak_align(
+        window,
         Path(match[0] + "_imu.csv"),
         Path(match[1] + "_IMU_1.csv"),
         lambda x: time_map_scale * x + time_map_offset,
     )
-    # print(offset)
 
 
-def peak_align(db_imu: Path, aria_imu: Path, time_map: Callable[[float], float]):
+def peak_align(
+    window: AlignmentWindow,
+    db_imu: Path,
+    aria_imu: Path,
+    time_map: Callable[[float], float],
+):
     db_data = csv.DictReader(open(db_imu, "r"))
     aria_data = csv.DictReader(open(aria_imu, "r"))
     db_time, db_accx, db_accy, db_accz = [], [], [], []
@@ -221,18 +241,13 @@ def peak_align(db_imu: Path, aria_imu: Path, time_map: Callable[[float], float])
         list(map(np.array, (aria_time, aria_accx, aria_accy, aria_accz))), 1
     )
     aria_imu_data[:, 0] /= 1e9
-
-    print(db_imu_data.shape, aria_imu_data.shape)
-
-    app = QtWidgets.QApplication([])
-    w = AlignmentWindow(db_imu_data, aria_imu_data)
-    app.exec_()
-    print("Done", db_imu, aria_imu)
+    window.set_data(db_imu_data, aria_imu_data)
 
 
 if __name__ == "__main__":
     for dir in sys.argv[1:]:
         matches = dir_match(Path(dir).resolve())
-        for m in matches:
-            process(m)
-            break
+        assert len(matches) > 0
+        app = QtWidgets.QApplication([])
+        w = AlignmentWindow(matches)
+        app.exec_()
