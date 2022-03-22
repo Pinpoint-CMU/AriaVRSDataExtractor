@@ -32,6 +32,8 @@ class AlignmentWindow(QtWidgets.QMainWindow):
         self.aria_offset = 0
         self.phone_imu_data = None
         self.aria_imu_data = None
+        self.aria_time_scale = 0.0
+        self.aria_time_offset = 0.0
 
         self.create_main_panel()
         self.draw_figure()
@@ -43,17 +45,29 @@ class AlignmentWindow(QtWidgets.QMainWindow):
     def closeEvent(self, event):
         global idx, matches
         if self.idx < len(matches) - 1:
-            print(self.db_offset, self.aria_offset)
+            print(
+                self.aria_time_scale,
+                self.aria_time_offset,
+                self.db_offset,
+                self.aria_offset,
+            )
             self.idx += 1
             process(self, self.matches[self.idx])
             event.ignore()
         else:
-            print(self.db_offset, self.aria_offset)
+            print(
+                self.aria_time_scale,
+                self.aria_time_offset,
+                self.db_offset,
+                self.aria_offset,
+            )
             event.accept()
 
-    def set_data(self, phone_imu_data, aria_imu_data):
+    def set_data(self, phone_imu_data, aria_imu_data, aria_scale, aria_offset):
         self.phone_imu_data = phone_imu_data
         self.aria_imu_data = aria_imu_data
+        self.aria_time_scale = aria_scale
+        self.aria_time_offset = aria_offset
         self.draw_figure()
 
     def create_main_panel(self):
@@ -207,10 +221,8 @@ def dir_match(dir: Path) -> List[Tuple[str, str]]:
 
 def process(window: AlignmentWindow, match: Tuple[str, str]):
     time_map_reader = csv.DictReader(open(match[1] + "_Time_1.csv", "r"))
-    time_map_0, time_map_1 = time_map_reader.__next__(), time_map_reader.__next__()
-    time_map_scale = (float(time_map_1["realtime"]) - float(time_map_0["realtime"])) / (
-        float(time_map_1["timestamp"]) - float(time_map_0["timestamp"])
-    )
+    time_map_0 = time_map_reader.__next__()
+    time_map_scale = 1
     time_map_offset = float(time_map_0["realtime"]) - time_map_scale * float(
         time_map_0["timestamp"]
     )
@@ -218,7 +230,8 @@ def process(window: AlignmentWindow, match: Tuple[str, str]):
         window,
         Path(match[0] + "_imu.csv"),
         Path(match[1] + "_IMU_1.csv"),
-        lambda x: time_map_scale * x + time_map_offset,
+        time_map_scale / 1e9,
+        time_map_offset / 1e9,
     )
 
 
@@ -226,8 +239,10 @@ def peak_align(
     window: AlignmentWindow,
     db_imu: Path,
     aria_imu: Path,
-    time_map: Callable[[float], float],
+    scale: float,
+    offset: float,
 ):
+    time_map = lambda x: scale * x + offset
     db_data = csv.DictReader(open(db_imu, "r"))
     aria_data = csv.DictReader(open(aria_imu, "r"))
     db_time, db_accx, db_accy, db_accz = [], [], [], []
@@ -248,8 +263,7 @@ def peak_align(
     aria_imu_data = np.stack(
         list(map(np.array, (aria_time, aria_accx, aria_accy, aria_accz))), 1
     )
-    aria_imu_data[:, 0] /= 1e9
-    window.set_data(db_imu_data, aria_imu_data)
+    window.set_data(db_imu_data, aria_imu_data, scale, offset)
 
 
 if __name__ == "__main__":
