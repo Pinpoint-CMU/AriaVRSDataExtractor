@@ -2,7 +2,7 @@ import csv
 import os
 import sys
 from pathlib import Path
-from typing import Callable, List, Tuple
+from typing import List, Tuple
 
 import matplotlib
 import numpy as np
@@ -40,27 +40,24 @@ class AlignmentWindow(QtWidgets.QMainWindow):
         self.show()
         self.idx = 0
         self.matches = matches
+        print("db_file,aria_file,scale,offset,db_offset,aria_offset")
         process(self, self.matches[self.idx])
 
     def closeEvent(self, event):
         global idx, matches
-        if self.idx < len(matches) - 1:
-            print(
-                self.aria_time_scale,
-                self.aria_time_offset,
-                self.db_offset,
-                self.aria_offset,
-            )
-            self.idx += 1
+        print(
+            f"{self.matches[self.idx][0].split('/')[-1]},"
+            f"{self.matches[self.idx][1].split('/')[-1]},"
+            f"{self.aria_time_scale},"
+            f"{self.aria_time_offset},"
+            f"{self.db_offset},"
+            f"{self.aria_offset}"
+        )
+        self.idx += 1
+        if self.idx < len(matches):
             process(self, self.matches[self.idx])
             event.ignore()
         else:
-            print(
-                self.aria_time_scale,
-                self.aria_time_offset,
-                self.db_offset,
-                self.aria_offset,
-            )
             event.accept()
 
     def set_data(self, phone_imu_data, aria_imu_data, aria_scale, aria_offset):
@@ -71,7 +68,6 @@ class AlignmentWindow(QtWidgets.QMainWindow):
         self.draw_figure()
 
     def create_main_panel(self):
-
         widget = QtWidgets.QWidget()
         vbox = QtWidgets.QVBoxLayout()
         widget.setLayout(vbox)
@@ -192,7 +188,7 @@ def match(file: Path, against_files: List[Path]) -> Path:
         for aFile in against_files
     ]
     against_diffs = [(at - start_time) ** 2 for at in against_times]
-    print("TError:", np.min(against_diffs))
+    print("TError:", np.min(against_diffs), file=sys.stderr)
     return against_files[np.argmin(against_diffs)]
 
 
