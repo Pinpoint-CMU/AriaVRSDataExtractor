@@ -13,7 +13,11 @@ do
     raw_angular_z as gyroZ, \
     raw_magnetic_x as magX, \
     raw_magnetic_y as magY, \
-    raw_magnetic_z as magZ \
+    raw_magnetic_z as magZ, \
+    attitude_x as orientX, \
+    attitude_y as orientY, \
+    attitude_z as orientZ, \
+    attitude_w as orientW \
     FROM imu;" > "$dir/$filename"_imu.csv
   sqlite3 -header -csv "$var" "SELECT \
     timestamp, \
