@@ -92,9 +92,9 @@ def process(alignment: Path):
                             "orientX": float(data["orientX"]),
                             "orientY": float(data["orientY"]),
                             "orientZ": float(data["orientZ"]),
-                            "processedPosX": curves_x[idx - 1](t),
-                            "processedPosY": curves_y[idx - 1](t),
-                            "processedPosZ": curves_z[idx - 1](t),
+                            "processedPosX": curves_x[idx - 1](t)[1],
+                            "processedPosY": curves_y[idx - 1](t)[1],
+                            "processedPosZ": curves_z[idx - 1](t)[1],
                         }
                     )
 
