@@ -4,6 +4,37 @@ from pathlib import Path
 
 import numpy as np
 
+from bezier import get_bezier_cubic
+
+
+def interpolate_gt(gt_data):
+    gt_timestamps = np.array([float(row["#timestamp"]) for row in gt_data])
+    gt_points_x = np.stack(
+        [
+            gt_timestamps,
+            np.array([float(row["p_RS_R_x [m]"]) for row in gt_data]),
+        ],
+        axis=-1,
+    )
+    gt_points_y = np.stack(
+        [
+            gt_timestamps,
+            np.array([float(row["p_RS_R_y [m]"]) for row in gt_data]),
+        ],
+        axis=-1,
+    )
+    gt_points_z = np.stack(
+        [
+            gt_timestamps,
+            np.array([float(row["p_RS_R_z [m]"]) for row in gt_data]),
+        ],
+        axis=-1,
+    )
+    curves_x = get_bezier_cubic(gt_points_x)
+    curves_y = get_bezier_cubic(gt_points_y)
+    curves_z = get_bezier_cubic(gt_points_z)
+    return curves_x, curves_y, curves_z, gt_timestamps
+
 
 def process(alignment: Path):
     with open(alignment, "r") as alignment_file:
@@ -35,42 +66,35 @@ def process(alignment: Path):
                 gt_reader = csv.DictReader(gt_csv, skipinitialspace=True)
                 gt_data.extend([row for row in gt_reader])
 
-            imu_timestamps = np.array(
-                [db_to_aria_time(float(row["timestamp"])) for row in imu_data]
-            )
+            curves_x, curves_y, curves_z, gt_timestamps = interpolate_gt(gt_data)
             output_data = []
-            for data in gt_data:
-                gt_timestamp = float(data["#timestamp"])
-                idx = np.searchsorted(imu_timestamps, gt_timestamp)
-                if idx < len(output_data) - 1:
-                    idx = (
-                        idx + 1
-                        if (gt_timestamp - imu_timestamps[idx]) ** 2
-                        > (gt_timestamp - imu_timestamps[idx + 1]) ** 2
-                        else idx
+            for data in imu_data:
+                imu_timestamp = db_to_aria_time(float(data["timestamp"]))
+                idx = np.searchsorted(gt_timestamps, imu_timestamp, side="right")
+                if idx > 0 and idx < len(gt_timestamps):
+                    t = (imu_timestamp - gt_timestamps[idx - 1]) / (
+                        gt_timestamps[idx] - gt_timestamps[idx - 1]
                     )
-                if idx >= len(imu_timestamps):
-                    break
-                if idx > 0:
+                    assert t >= 0 and t <= 1
                     output_data.append(
                         {
-                            "timestamp": float(gt_timestamp),
-                            "iphoneAccX": float(imu_data[idx]["accX"]),
-                            "iphoneAccY": float(imu_data[idx]["accY"]),
-                            "iphoneAccZ": float(imu_data[idx]["accZ"]),
-                            "iphoneGyroX": float(imu_data[idx]["gyroX"]),
-                            "iphoneGyroY": float(imu_data[idx]["gyroY"]),
-                            "iphoneGyroZ": float(imu_data[idx]["gyroZ"]),
-                            "iphoneMagX": float(imu_data[idx]["magX"]),
-                            "iphoneMagY": float(imu_data[idx]["magY"]),
-                            "iphoneMagZ": float(imu_data[idx]["magZ"]),
-                            "orientW": float(imu_data[idx]["orientW"]),
-                            "orientX": float(imu_data[idx]["orientX"]),
-                            "orientY": float(imu_data[idx]["orientY"]),
-                            "orientZ": float(imu_data[idx]["orientZ"]),
-                            "processedPosX": float(data["p_RS_R_x [m]"]),
-                            "processedPosY": float(data["p_RS_R_y [m]"]),
-                            "processedPosZ": float(data["p_RS_R_z [m]"]),
+                            "timestamp": float(imu_timestamp),
+                            "iphoneAccX": float(data["accX"]),
+                            "iphoneAccY": float(data["accY"]),
+                            "iphoneAccZ": float(data["accZ"]),
+                            "iphoneGyroX": float(data["gyroX"]),
+                            "iphoneGyroY": float(data["gyroY"]),
+                            "iphoneGyroZ": float(data["gyroZ"]),
+                            "iphoneMagX": float(data["magX"]),
+                            "iphoneMagY": float(data["magY"]),
+                            "iphoneMagZ": float(data["magZ"]),
+                            "orientW": float(data["orientW"]),
+                            "orientX": float(data["orientX"]),
+                            "orientY": float(data["orientY"]),
+                            "orientZ": float(data["orientZ"]),
+                            "processedPosX": curves_x[idx - 1](t),
+                            "processedPosY": curves_y[idx - 1](t),
+                            "processedPosZ": curves_z[idx - 1](t),
                         }
                     )
 
