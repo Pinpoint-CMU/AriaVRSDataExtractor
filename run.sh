@@ -19,4 +19,5 @@ do
   find "$dir" -type f -name "*.db" | xargs -I {} "$SCRIPT_DIR/db.sh" "{}"
   python3 "$SCRIPT_DIR/imu_alignment.py" "$dir" > "$dir/alignment.csv"
   python3 "$SCRIPT_DIR/imu_gt.py" "$dir/alignment.csv"
+  python3 "$SCRIPT_DIR/ble_gt.py" "$dir/alignment.csv"
 done
