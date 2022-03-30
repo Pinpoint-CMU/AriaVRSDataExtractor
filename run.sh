@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Sort by timestamps and remove the first 8 values
+# ls *.euroc | xargs -I {} -- sh -c 'printf "{}, "; sed -n "2 p" {}' | awk -F ", " '{print $1, $2}' | sort -k2 -n | head -n 8 | cut -d ' ' -f 1 | xargs rm
+
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
