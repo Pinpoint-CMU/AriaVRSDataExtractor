@@ -73,7 +73,10 @@ def process(alignment: Path):
             for data in ble_data_ungrouped:
                 if ble_t != data["timestamp"]:
                     if ble_t is not None:
-                        assert float(data["timestamp"]) - float(ble_t) < 1.2
+                        while float(data["timestamp"]) - float(ble_t) > 1.2:
+                            print("No Beacons read for timestamp:", ble_t)
+                            ble_data.append({"timestamp": ble_t, "ble": []})
+                            ble_t = str(float(ble_t) + 1)
                         ble_data.append({"timestamp": ble_t, "ble": cur_t_bles})
                     ble_t = data["timestamp"]
                     cur_t_bles = []
