@@ -1,4 +1,6 @@
+import csv
 import time
+from pathlib import Path
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -87,7 +89,7 @@ def evaluate_bezier(points, n):
     return np.array([fun(t) for fun in curves for t in np.linspace(0, 1, n)])
 
 
-if __name__ == "__main__":
+def random_plot():
     points = np.random.rand(5, 2)
     t0 = time.time()
     path = evaluate_bezier(points, 50)
@@ -102,3 +104,102 @@ if __name__ == "__main__":
     plt.plot(px, py, "b-")
     plt.plot(x, y, "ro")
     plt.show()
+
+
+def plot_aria(alignment: Path):
+    def interpolate_gt(gt_data):
+        gt_timestamps = np.array([float(row["#timestamp"]) for row in gt_data])
+        gt_points_x = np.stack(
+            [
+                gt_timestamps,
+                np.array([float(row["p_RS_R_x [m]"]) for row in gt_data]),
+            ],
+            axis=-1,
+        )
+        gt_points_y = np.stack(
+            [
+                gt_timestamps,
+                np.array([float(row["p_RS_R_y [m]"]) for row in gt_data]),
+            ],
+            axis=-1,
+        )
+        gt_points_z = np.stack(
+            [
+                gt_timestamps,
+                np.array([float(row["p_RS_R_z [m]"]) for row in gt_data]),
+            ],
+            axis=-1,
+        )
+        curves_x = get_bezier_cubic(gt_points_x)
+        curves_y = get_bezier_cubic(gt_points_y)
+        curves_z = get_bezier_cubic(gt_points_z)
+        return curves_x, curves_y, curves_z, gt_timestamps
+
+    with open(alignment, "r") as alignment_file:
+        alignment_reader = csv.DictReader(alignment_file, skipinitialspace=True)
+        for truth_idx, match in enumerate(alignment_reader):
+            db_file, aria_file, scale, offset, db_offset, aria_offset = (
+                match[key]
+                for key in [
+                    "db_file",
+                    "aria_file",
+                    "scale",
+                    "offset",
+                    "db_offset",
+                    "aria_offset",
+                ]
+            )
+            scale, offset, db_offset, aria_offset = tuple(
+                map(float, [scale, offset, db_offset, aria_offset])
+            )
+            db_to_aria_time = (
+                lambda time: (time - offset + db_offset - aria_offset) / scale
+            )
+            imu_data, gt_data = [], []
+            with open(alignment.parent / (db_file + "_imu.csv"), "r") as imu_csv, open(
+                alignment.parent / (aria_file + ".euroc"), "r"
+            ) as gt_csv:
+                imu_reader = csv.DictReader(imu_csv, skipinitialspace=True)
+                imu_data.extend([row for row in imu_reader])
+                gt_reader = csv.DictReader(gt_csv, skipinitialspace=True)
+                gt_data.extend([row for row in gt_reader])
+
+            input_data = []
+            for row in gt_data:
+                input_data.append(
+                    [
+                        float(row["p_RS_R_x [m]"]),
+                        float(row["p_RS_R_y [m]"]),
+                        float(row["p_RS_R_z [m]"]),
+                    ]
+                )
+            curves_x, curves_y, curves_z, gt_timestamps = interpolate_gt(gt_data)
+            output_data = []
+            for data in imu_data:
+                imu_timestamp = db_to_aria_time(float(data["timestamp"]))
+                idx = np.searchsorted(gt_timestamps, imu_timestamp, side="right")
+                if idx > 0 and idx < len(gt_timestamps):
+                    t = (imu_timestamp - gt_timestamps[idx - 1]) / (
+                        gt_timestamps[idx] - gt_timestamps[idx - 1]
+                    )
+                    assert t >= 0 and t <= 1
+                    output_data.append(
+                        [
+                            curves_x[idx - 1](t)[1],
+                            curves_y[idx - 1](t)[1],
+                            curves_z[idx - 1](t)[1],
+                        ]
+                    )
+
+            input_data = np.array(input_data)
+            output_data = np.array(output_data)
+            plt.figure(figsize=(11, 8))
+            plt.plot(input_data[:, 0], input_data[:, 1], label="10Hz")
+            plt.plot(output_data[:, 0], output_data[:, 1], label="100Hz")
+            plt.legend()
+            plt.show()
+            break
+
+
+if __name__ == "__main__":
+    plot_aria(Path("../NSH_3_4/3/alignment.csv").resolve())
