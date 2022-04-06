@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from scipy.spatial.transform import Rotation, Slerp
 
 from bezier import get_bezier_cubic
 
@@ -33,7 +34,22 @@ def interpolate_gt(gt_data):
     curves_x = get_bezier_cubic(gt_points_x)
     curves_y = get_bezier_cubic(gt_points_y)
     curves_z = get_bezier_cubic(gt_points_z)
-    return curves_x, curves_y, curves_z, gt_timestamps
+    rots = Rotation.from_quat(
+        np.array(
+            [
+                [
+                    float(row["q_RS_x []"]),
+                    float(row["q_RS_y []"]),
+                    float(row["q_RS_z []"]),
+                    float(row["q_RS_w []"]),
+                ]
+                for row in gt_data
+            ]
+        )
+    )
+    assert gt_timestamps.shape[0] == len(rots)
+    curves_orient = Slerp(gt_timestamps, rots)
+    return curves_x, curves_y, curves_z, curves_orient, gt_timestamps
 
 
 def process(alignment: Path):
@@ -66,7 +82,9 @@ def process(alignment: Path):
                 gt_reader = csv.DictReader(gt_csv, skipinitialspace=True)
                 gt_data.extend([row for row in gt_reader])
 
-            curves_x, curves_y, curves_z, gt_timestamps = interpolate_gt(gt_data)
+            curves_x, curves_y, curves_z, curves_orient, gt_timestamps = interpolate_gt(
+                gt_data
+            )
             output_data = []
             for data in imu_data:
                 imu_timestamp = db_to_aria_time(float(data["timestamp"]))
@@ -76,6 +94,7 @@ def process(alignment: Path):
                         gt_timestamps[idx] - gt_timestamps[idx - 1]
                     )
                     assert t >= 0 and t <= 1
+                    orientation = curves_orient(imu_timestamp).as_quat()
                     output_data.append(
                         {
                             "timestamp": float(imu_timestamp),
@@ -88,10 +107,10 @@ def process(alignment: Path):
                             "iphoneMagX": float(data["magX"]),
                             "iphoneMagY": float(data["magY"]),
                             "iphoneMagZ": float(data["magZ"]),
-                            "orientW": float(data["orientW"]),
-                            "orientX": float(data["orientX"]),
-                            "orientY": float(data["orientY"]),
-                            "orientZ": float(data["orientZ"]),
+                            "orientW": orientation[3],
+                            "orientX": orientation[0],
+                            "orientY": orientation[1],
+                            "orientZ": orientation[2],
                             "processedPosX": curves_x[idx - 1](t)[1],
                             "processedPosY": curves_y[idx - 1](t)[1],
                             "processedPosZ": curves_z[idx - 1](t)[1],
