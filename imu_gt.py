@@ -7,6 +7,15 @@ from scipy.spatial.transform import Rotation, Slerp
 
 from bezier import get_bezier_cubic
 
+rotation = Rotation.from_euler("xyz", [0, 180, 0], degrees=True) * Rotation.from_euler(
+    "xyz", [-45, 0, 0], degrees=True
+)
+
+
+def rotate_aria_to_phone(orientation):
+    orientation = orientation * rotation
+    return orientation
+
 
 def interpolate_gt(gt_data):
     gt_timestamps = np.array([float(row["#timestamp"]) for row in gt_data])
@@ -94,7 +103,8 @@ def process(alignment: Path):
                         gt_timestamps[idx] - gt_timestamps[idx - 1]
                     )
                     assert t >= 0 and t <= 1
-                    orientation = curves_orient(imu_timestamp).as_quat()
+                    orientation = curves_orient(imu_timestamp)
+                    orientation = rotate_aria_to_phone(orientation).as_quat()
                     output_data.append(
                         {
                             "timestamp": float(imu_timestamp),
