@@ -36,7 +36,6 @@ class AlignmentWindow(QtWidgets.QMainWindow):
         self.aria_time_offset = 0.0
 
         self.create_main_panel()
-        self.draw_figure()
         self.show()
         self.idx = 0
         self.matches = matches
@@ -65,7 +64,7 @@ class AlignmentWindow(QtWidgets.QMainWindow):
         self.aria_imu_data = aria_imu_data
         self.aria_time_scale = aria_scale
         self.aria_time_offset = aria_offset
-        self.draw_figure()
+        self.draw_figure(skip_lim=True)
 
     def create_main_panel(self):
         widget = QtWidgets.QWidget()
@@ -164,8 +163,10 @@ class AlignmentWindow(QtWidgets.QMainWindow):
             self.phone_axis = phone_axis
             self.draw_figure()
 
-    def draw_figure(self):
+    def draw_figure(self, skip_lim=False):
         if self.phone_imu_data is not None and self.aria_imu_data is not None:
+            xlim = self.canvas.axes.get_xlim()
+            ylim = self.canvas.axes.get_ylim()
             self.canvas.axes.clear()
             self.canvas.axes.plot(
                 self.phone_imu_data[:, 0] + self.db_offset,
@@ -175,6 +176,9 @@ class AlignmentWindow(QtWidgets.QMainWindow):
                 self.aria_imu_data[:, 0] + self.aria_offset,
                 self.aria_imu_data[:, self.aria_axis],
             )
+            if not skip_lim:
+                self.canvas.axes.set_xlim(*xlim)
+                self.canvas.axes.set_ylim(*ylim)
             self.canvas.draw()
             self.db_title.setText(self.matches[self.idx][0].split("/")[-1])
             self.aria_title.setText(self.matches[self.idx][1].split("/")[-1])
