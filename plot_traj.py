@@ -19,9 +19,10 @@ def plot_traj(filename: Path):
             for row in reader
         ]
     )
-    _, axes = plt.subplots(2, 1)
+    _, axes = plt.subplots(3, 1)
     axes[0].plot(txyz[:, 1], txyz[:, 2])
     axes[1].plot(txyz[:, 1], txyz[:, 3])
+    axes[2].plot(txyz[:, 2], txyz[:, 3])
     plt.show()
 
 
