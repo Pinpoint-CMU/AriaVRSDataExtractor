@@ -11,6 +11,8 @@ from rosbags.typesys.types import builtin_interfaces__msg__Time as Time
 from rosbags.typesys.types import geometry_msgs__msg__Point as Point
 from rosbags.typesys.types import geometry_msgs__msg__Pose as Pose
 from rosbags.typesys.types import \
+    geometry_msgs__msg__PoseStamped as PoseStamped
+from rosbags.typesys.types import \
     geometry_msgs__msg__PoseWithCovariance as PoseWithCovariance
 from rosbags.typesys.types import geometry_msgs__msg__Quaternion as Quaternion
 from rosbags.typesys.types import geometry_msgs__msg__Transform as Transform
@@ -21,6 +23,7 @@ from rosbags.typesys.types import \
     geometry_msgs__msg__TwistWithCovariance as TwistWithCovariance
 from rosbags.typesys.types import geometry_msgs__msg__Vector3 as Vector3
 from rosbags.typesys.types import nav_msgs__msg__Odometry as Odometry
+from rosbags.typesys.types import nav_msgs__msg__Path as RosPath
 from rosbags.typesys.types import sensor_msgs__msg__Imu as Imu
 from rosbags.typesys.types import sensor_msgs__msg__MagneticField as Mag
 from rosbags.typesys.types import std_msgs__msg__Header as Header
@@ -36,6 +39,9 @@ def process(input: Path, output: Path):
         imu_topic = "/imu"
         imu_msgtype = Imu.__msgtype__
         imu_connection = writer.add_connection(imu_topic, imu_msgtype)
+        path_topic = "/path"
+        path_msgtype = RosPath.__msgtype__
+        path_connection = writer.add_connection(path_topic, path_msgtype)
         mag_topic = "/mag"
         mag_msgtype = Mag.__msgtype__
         mag_connection = writer.add_connection(mag_topic, mag_msgtype)
@@ -69,6 +75,8 @@ def process(input: Path, output: Path):
                 TFMessage.__msgtype__,
             ),
         )
+
+        poses = []
 
         with open(input, "r") as csvfile:
             csv_reader = csv.DictReader(csvfile)
@@ -114,6 +122,32 @@ def process(input: Path, output: Path):
                     start_time + int(math.floor(dt)),
                     cdr_to_ros1(serialize_cdr(odometry, traj_msgtype), traj_msgtype),
                 )
+
+                poses.append(
+                    PoseStamped(
+                        header=Header(
+                            frame_id="path",
+                            stamp=Time(
+                                sec=start_time_s + int(math.floor(dt / 1e9)),
+                                nanosec=int(math.ceil(dt % 1e9)),
+                            ),
+                        ),
+                        pose=Pose(
+                            position=Point(
+                                x=float(row["processedPosX"]),
+                                y=float(row["processedPosY"]),
+                                z=float(row["processedPosZ"]),
+                            ),
+                            orientation=Quaternion(
+                                x=float(row["orientX"]),
+                                y=float(row["orientY"]),
+                                z=float(row["orientZ"]),
+                                w=float(row["orientW"]),
+                            ),
+                        ),
+                    )
+                )
+
                 # timestamp,iphoneAccX,iphoneAccY,iphoneAccZ,iphoneGyroX,iphoneGyroY,iphoneGyroZ,iphoneMagX,iphoneMagY,iphoneMagZ,
                 imu = Imu(
                     header=Header(
@@ -168,6 +202,24 @@ def process(input: Path, output: Path):
                     start_time + int(math.floor(dt)),
                     cdr_to_ros1(serialize_cdr(mag, mag_msgtype), mag_msgtype),
                 )
+
+        writer.write(
+            path_connection,
+            start_time,
+            cdr_to_ros1(
+                serialize_cdr(
+                    RosPath(
+                        header=Header(
+                            frame_id="traj",
+                            stamp=Time(sec=start_time_s, nanosec=start_time_ns),
+                        ),
+                        poses=poses,
+                    ),
+                    path_msgtype,
+                ),
+                path_msgtype,
+            ),
+        )
 
 
 if __name__ == "__main__":
