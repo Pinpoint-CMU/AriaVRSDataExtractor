@@ -28,6 +28,7 @@ from rosbags.typesys.types import sensor_msgs__msg__Imu as Imu
 from rosbags.typesys.types import sensor_msgs__msg__MagneticField as Mag
 from rosbags.typesys.types import std_msgs__msg__Header as Header
 from rosbags.typesys.types import tf2_msgs__msg__TFMessage as TFMessage
+from tqdm import tqdm
 
 
 def process(input: Path, output: Path):
@@ -79,8 +80,10 @@ def process(input: Path, output: Path):
         poses = []
 
         with open(input, "r") as csvfile:
+            lines = sum(1 for line in csvfile)
+            csvfile.seek(0)
             csv_reader = csv.DictReader(csvfile)
-            for row in csv_reader:
+            for row in tqdm(csv_reader, total=lines):
                 # timestamp,iphoneAccX,iphoneAccY,iphoneAccZ,iphoneGyroX,iphoneGyroY,iphoneGyroZ,iphoneMagX,iphoneMagY,iphoneMagZ,
                 # orientW,orientX,orientY,orientZ,
                 # processedPosX,processedPosY,processedPosZ
