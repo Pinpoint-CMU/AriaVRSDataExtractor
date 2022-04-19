@@ -78,6 +78,8 @@ def process(input: Path, output: Path):
         )
 
         poses = []
+        timestamps = []
+        times = []
 
         with open(input, "r") as csvfile:
             lines = sum(1 for line in csvfile)
@@ -90,6 +92,15 @@ def process(input: Path, output: Path):
                 if csv_start_time is None:
                     csv_start_time = float(row["timestamp"])
                 dt = float(row["timestamp"]) - csv_start_time
+
+                times.append(
+                    Time(
+                        sec=start_time_s + int(math.floor(dt / 1e9)),
+                        nanosec=int(math.ceil(dt % 1e9)),
+                    )
+                )
+                timestamps.append(start_time + int(math.floor(dt)))
+
                 odometry = Odometry(
                     header=Header(
                         frame_id="traj",
@@ -206,23 +217,26 @@ def process(input: Path, output: Path):
                     cdr_to_ros1(serialize_cdr(mag, mag_msgtype), mag_msgtype),
                 )
 
-        writer.write(
-            path_connection,
-            start_time,
-            cdr_to_ros1(
-                serialize_cdr(
-                    RosPath(
-                        header=Header(
-                            frame_id="traj",
-                            stamp=Time(sec=start_time_s, nanosec=start_time_ns),
+        for t, stamp in tqdm(
+            zip(times[::10], timestamps[::10]), total=len(times[::10])
+        ):
+            writer.write(
+                path_connection,
+                stamp,
+                cdr_to_ros1(
+                    serialize_cdr(
+                        RosPath(
+                            header=Header(
+                                frame_id="traj",
+                                stamp=t,
+                            ),
+                            poses=poses,
                         ),
-                        poses=poses,
+                        path_msgtype,
                     ),
                     path_msgtype,
                 ),
-                path_msgtype,
-            ),
-        )
+            )
 
 
 if __name__ == "__main__":
