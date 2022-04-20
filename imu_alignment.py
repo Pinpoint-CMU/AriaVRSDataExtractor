@@ -215,7 +215,6 @@ def dir_match(dir: Path) -> List[Tuple[str, str]]:
     for imu_file in db_imu_files:
         vrs_file = match(imu_file, vrs_time_files)
         matches.append((str(imu_file)[:-8], str(vrs_file)[:-11]))
-        vrs_time_files.remove(vrs_file)
     return matches
 
 
