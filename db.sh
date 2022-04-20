@@ -19,13 +19,14 @@ do
     attitude_z as orientZ, \
     attitude_w as orientW \
     FROM imu;" > "$dir/$filename"_imu.csv
+  sqlite3 "$var" ".tables beac%" | xargs -I {} \
   sqlite3 -header -csv "$var" "SELECT \
     timestamp, \
     major, \
     minor, \
     rssi \
-    FROM beacons \
     WHERE major = 65502 \
+    FROM {} \
     AND rssi != 0 \
     ;" > "$dir/$filename"_ble.csv
 done
