@@ -13,11 +13,7 @@ do
     raw_angular_z as gyroZ, \
     raw_magnetic_x as magX, \
     raw_magnetic_y as magY, \
-    raw_magnetic_z as magZ, \
-    attitude_x as orientX, \
-    attitude_y as orientY, \
-    attitude_z as orientZ, \
-    attitude_w as orientW \
+    raw_magnetic_z as magZ \
     FROM imu;" > "$dir/$filename"_imu.csv
   sqlite3 "$var" ".tables beac%" | xargs -I {} \
   sqlite3 -header -csv "$var" "SELECT \
@@ -25,8 +21,8 @@ do
     major, \
     minor, \
     rssi \
-    WHERE major = 65502 \
     FROM {} \
+    WHERE major = 10003 \
     AND rssi != 0 \
     ;" > "$dir/$filename"_ble.csv
 done
