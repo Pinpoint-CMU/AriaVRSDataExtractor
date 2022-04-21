@@ -44,7 +44,7 @@ def write_files(filename: Path):
             time_writer.writerow(
                 {
                     "timestamp": row["timestamp"],
-                    "realtime": row["timestamp"],
+                    "realtime": float(row["timestamp"]) * 1e9,
                 }
             )
             imu_writer.writerow(

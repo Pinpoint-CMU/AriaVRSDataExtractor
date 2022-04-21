@@ -221,7 +221,10 @@ def dir_match(dir: Path) -> List[Tuple[str, str]]:
 def process(window: AlignmentWindow, match: Tuple[str, str]):
     time_map_reader = csv.DictReader(open(match[1] + "_Time_1.csv", "r"))
     time_map_0 = time_map_reader.__next__()
-    time_map_scale = 1
+    time_map_1 = time_map_reader.__next__()
+    time_map_scale = (float(time_map_1["realtime"]) - float(time_map_0["realtime"])) / (
+        float(time_map_1["timestamp"]) - float(time_map_0["timestamp"])
+    )
     time_map_offset = float(time_map_0["realtime"]) - time_map_scale * float(
         time_map_0["timestamp"]
     )
