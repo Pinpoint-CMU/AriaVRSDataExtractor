@@ -40,7 +40,7 @@ def write_files(filename: Path):
         imu_writer.writeheader()
         euroc_file.write(", ".join(euroc_fields) + "\n")
 
-        for idx, row in enumerate(json.load(jsonfile)):
+        for row in json.load(jsonfile):
             time_writer.writerow(
                 {
                     "timestamp": row["timestamp"],
@@ -61,7 +61,7 @@ def write_files(filename: Path):
             euroc_file.write(
                 ", ".join(
                     [
-                        str(idx),
+                        str(row["timestamp"]),
                         str(row["posX"]),
                         str(row["posY"]),
                         str(row["posZ"]),
