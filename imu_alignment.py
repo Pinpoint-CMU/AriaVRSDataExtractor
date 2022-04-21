@@ -201,14 +201,14 @@ def dir_match(dir: Path) -> List[Tuple[str, str]]:
     files = os.listdir(dir)
     db_imu_files = list(
         map(
-            lambda db: Path(dir / (db + "_imu.csv")),
-            filter(lambda path: path.endswith(".db"), files),
+            lambda vrs: Path(dir / vrs),
+            filter(lambda path: path.endswith("_imu.csv"), files),
         )
     )
     vrs_time_files = list(
         map(
-            lambda vrs: Path(dir / (vrs[:-4] + "_Time_1.csv")),
-            filter(lambda path: path.endswith(".vrs"), files),
+            lambda vrs: Path(dir / vrs),
+            filter(lambda path: path.endswith("_Time_1.csv"), files),
         )
     )
     matches: List[Tuple[str, str]] = []
