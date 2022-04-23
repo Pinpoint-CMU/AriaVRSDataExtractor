@@ -79,12 +79,37 @@ def get_orientations(gt_data):
     )
 
 
-def interpolate_gt(timestamps, points, orientations: Rotation):
+def get_gt_imu(gt_imu_data):
+    timestamps = np.array([float(row["timestamp"]) for row in gt_imu_data])
+    imu = np.array(
+        [
+            [
+                float(row["accX"]),
+                float(row["accY"]),
+                float(row["accZ"]),
+                float(row["gyroX"]),
+                float(row["gyroY"]),
+                float(row["gyroZ"]),
+            ]
+            for row in gt_imu_data
+        ]
+    )
+    return timestamps, imu
+
+
+def interpolate_gt(
+    timestamps, points, orientations: Rotation, gt_imu_timestamps, gt_imu
+):
     curves_x = get_bezier_cubic(np.stack([timestamps, points[:, 0]], axis=-1))
     curves_y = get_bezier_cubic(np.stack([timestamps, points[:, 1]], axis=-1))
     curves_z = get_bezier_cubic(np.stack([timestamps, points[:, 2]], axis=-1))
     curves_orient = Slerp(timestamps, orientations)
-    return curves_x, curves_y, curves_z, curves_orient
+    curves_imu = [
+        get_bezier_cubic(np.stack([gt_imu_timestamps, gt_imu[:, i]], axis=-1))
+        for i in range(gt_imu.shape[1])
+    ]
+
+    return curves_x, curves_y, curves_z, curves_orient, curves_imu
 
 
 def process(alignment: Path, R: Rotation, T):
@@ -108,33 +133,51 @@ def process(alignment: Path, R: Rotation, T):
             db_to_aria_time = (
                 lambda time: (time - offset + db_offset - aria_offset) / scale
             )
-            imu_data, gt_data = [], []
+            imu_data, gt_data, gt_imu_data = [], [], []
             with open(alignment.parent / (db_file + "_imu.csv"), "r") as imu_csv, open(
                 alignment.parent / (aria_file + ".euroc"), "r"
-            ) as gt_csv:
+            ) as gt_csv, open(
+                alignment.parent / (aria_file + "_IMU_1.csv"), "r"
+            ) as gt_imu_csv:
                 imu_reader = csv.DictReader(imu_csv, skipinitialspace=True)
                 imu_data.extend([row for row in imu_reader])
                 gt_reader = csv.DictReader(gt_csv, skipinitialspace=True)
                 gt_data.extend([row for row in gt_reader])
+                gt_imu_reader = csv.DictReader(gt_imu_csv, skipinitialspace=True)
+                gt_imu_data.extend([row for row in gt_imu_reader])
 
             gt_timestamps = get_timestamps(gt_data)
             gt_points = get_positions(gt_data)
             gt_orientations = get_orientations(gt_data)
-            gt_points, gt_orientations = to_rig(gt_points, gt_orientations)
-            gt_points, gt_orientations = to_rgb(gt_points, gt_orientations, R, T)
-            curves_x, curves_y, curves_z, curves_orient = interpolate_gt(
-                gt_timestamps, gt_points, gt_orientations
+            gt_imu_timestamps, gt_imu = get_gt_imu(gt_imu_data)
+            # gt_points, gt_orientations = to_rig(gt_points, gt_orientations)
+            # gt_points, gt_orientations = to_rgb(gt_points, gt_orientations, R, T)
+            curves_x, curves_y, curves_z, curves_orient, curves_gt_imu = interpolate_gt(
+                gt_timestamps, gt_points, gt_orientations, gt_imu_timestamps, gt_imu
             )
             output_data = []
             for data in imu_data:
                 imu_timestamp = db_to_aria_time(float(data["timestamp"]))
                 idx = np.searchsorted(gt_timestamps, imu_timestamp, side="right")
+                idx_gt_imu = np.searchsorted(
+                    gt_imu_timestamps, imu_timestamp, side="right"
+                )
                 if idx > 0 and idx < len(gt_timestamps):
                     t = (imu_timestamp - gt_timestamps[idx - 1]) / (
                         gt_timestamps[idx] - gt_timestamps[idx - 1]
                     )
+                    t_gt_imu = (imu_timestamp - gt_imu_timestamps[idx_gt_imu - 1]) / (
+                        gt_imu_timestamps[idx_gt_imu]
+                        - gt_imu_timestamps[idx_gt_imu - 1]
+                    )
                     assert t >= 0 and t <= 1
                     orientation = curves_orient(imu_timestamp).as_quat()
+                    stencilAccX = curves_gt_imu[0][idx_gt_imu - 1](t_gt_imu)[1]
+                    stencilAccY = curves_gt_imu[1][idx_gt_imu - 1](t_gt_imu)[1]
+                    stencilAccZ = curves_gt_imu[2][idx_gt_imu - 1](t_gt_imu)[1]
+                    stencilGyroX = curves_gt_imu[3][idx_gt_imu - 1](t_gt_imu)[1]
+                    stencilGyroY = curves_gt_imu[4][idx_gt_imu - 1](t_gt_imu)[1]
+                    stencilGyroZ = curves_gt_imu[5][idx_gt_imu - 1](t_gt_imu)[1]
                     output_data.append(
                         {
                             "timestamp": float(imu_timestamp),
@@ -147,6 +190,12 @@ def process(alignment: Path, R: Rotation, T):
                             "iphoneMagX": float(data["magX"]),
                             "iphoneMagY": float(data["magY"]),
                             "iphoneMagZ": float(data["magZ"]),
+                            "stencilAccX": stencilAccX,
+                            "stencilAccY": stencilAccY,
+                            "stencilAccZ": stencilAccZ,
+                            "stencilGyroX": stencilGyroX,
+                            "stencilGyroY": stencilGyroY,
+                            "stencilGyroZ": stencilGyroZ,
                             "orientW": orientation[3],
                             "orientX": orientation[0],
                             "orientY": orientation[1],
