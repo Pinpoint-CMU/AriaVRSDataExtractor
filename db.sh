@@ -5,6 +5,10 @@ do
   filename=$(basename -- "$var")
   sqlite3 -header -csv "$var" "SELECT \
     timestamp, \
+    attitude_x as phoneOrientX, \
+    attitude_y as phoneOrientY, \
+    attitude_z as phoneOrientZ, \
+    attitude_w as phoneOrientW, \
     raw_acceleration_x as accX, \
     raw_acceleration_y as accY, \
     raw_acceleration_z as accZ, \
