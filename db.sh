@@ -5,10 +5,14 @@ do
   filename=$(basename -- "$var")
   sqlite3 -header -csv "$var" "SELECT \
     timestamp, \
-    attitude_x as phoneOrientX, \
-    attitude_y as phoneOrientY, \
-    attitude_z as phoneOrientZ, \
-    attitude_w as phoneOrientW, \
+    rotation_w as orientW, \
+    rotation_x as orientX, \
+    rotation_y as orientY, \
+    rotation_z as orientZ, \
+    geomag_rotation_w as magOrientW, \
+    geomag_rotation_x as magOrientX, \
+    geomag_rotation_y as magOrientY, \
+    geomag_rotation_z as magOrientZ, \
     raw_acceleration_x as accX, \
     raw_acceleration_y as accY, \
     raw_acceleration_z as accZ, \
@@ -26,7 +30,7 @@ do
     minor, \
     rssi \
     FROM {} \
-    WHERE major = 10003 \
+    WHERE major = 10004 \
     AND rssi != 0 \
     ;" > "$dir/$filename"_ble.csv
 done
