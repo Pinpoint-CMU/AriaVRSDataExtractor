@@ -1,10 +1,12 @@
 import csv
 import json
+import logging
 import sys
 from pathlib import Path
 
 import numpy as np
 from scipy.spatial.transform import Rotation, Slerp
+from tqdm import tqdm
 
 from bezier import get_bezier_cubic
 
@@ -30,8 +32,7 @@ def load_calib(calib_file=aria_calib_file):
     return rot, np.array(trans)
 
 
-def to_aria_frame(orientations: Rotation, gt_orientations: Rotation):
-    R_cam_rgb, _ = load_calib()
+def to_aria_frame(orientations: Rotation, gt_orientations: Rotation, R_cam_rgb):
     R_local_cam = gt_orientations
 
     R_rgb_phone = (
@@ -119,7 +120,7 @@ def interpolate_gt(
     return curves_x, curves_y, curves_z, curves_orient, curves_imu
 
 
-def process(alignment: Path, R: Rotation, T):
+def process(alignment: Path, R: Rotation):
     with open(alignment, "r") as alignment_file:
         alignment_reader = csv.DictReader(alignment_file, skipinitialspace=True)
         for truth_idx, match in enumerate(alignment_reader):
@@ -134,6 +135,8 @@ def process(alignment: Path, R: Rotation, T):
                     "aria_offset",
                 ]
             )
+            logging.info(f"Processing {aria_file}->{db_file}")
+            logging.info("Reading data files")
             scale, offset, db_offset, aria_offset = tuple(
                 map(float, [scale, offset, db_offset, aria_offset])
             )
@@ -153,6 +156,7 @@ def process(alignment: Path, R: Rotation, T):
                 gt_imu_reader = csv.DictReader(gt_imu_csv, skipinitialspace=True)
                 gt_imu_data.extend([row for row in gt_imu_reader])
 
+            logging.info("Interpolating data")
             gt_timestamps = get_timestamps(gt_data)
             gt_points = get_positions(gt_data)
             gt_orientations = get_orientations(gt_data)
@@ -164,7 +168,7 @@ def process(alignment: Path, R: Rotation, T):
             output_gt_orient = []
             output_phone_gyro_orient = []
             output_phone_mag_orient = []
-            for data in imu_data:
+            for data in tqdm(imu_data):
                 imu_timestamp = db_to_aria_time(float(data["timestamp"]))
                 idx = np.searchsorted(gt_timestamps, imu_timestamp, side="right")
                 idx_gt_imu = np.searchsorted(
@@ -234,15 +238,15 @@ def process(alignment: Path, R: Rotation, T):
 
             assert len(output_data) > 0
 
-            # rotate phone orientations to aria frame
+            logging.info("Rotating phone orientations to aria frame")
             output_gt_orient = Rotation.from_quat(output_gt_orient)
             output_phone_gyro_orient = Rotation.from_quat(output_phone_gyro_orient)
             output_phone_mag_orient = Rotation.from_quat(output_phone_mag_orient)
             output_phone_gyro_orient = to_aria_frame(
-                output_phone_gyro_orient, output_gt_orient
+                output_phone_gyro_orient, output_gt_orient, R
             ).as_quat()
             output_phone_mag_orient = to_aria_frame(
-                output_phone_mag_orient, output_gt_orient
+                output_phone_mag_orient, output_gt_orient, R
             ).as_quat()
             for idx, (d, gyro_orient, mag_orient) in enumerate(
                 zip(output_data, output_phone_gyro_orient, output_phone_mag_orient)
@@ -260,15 +264,20 @@ def process(alignment: Path, R: Rotation, T):
                 }
 
             outfilename = alignment.parent / f"traj_{truth_idx}.csv"
-            print("Writing", len(output_data), "rows to", outfilename)
+            logging.info(f"Writing {len(output_data)} rows to {outfilename}")
             with open(alignment.parent / outfilename, "w+") as outfile:
                 writer = csv.DictWriter(outfile, fieldnames=list(output_data[0].keys()))
                 writer.writeheader()
-                for row in output_data:
+                for row in tqdm(output_data):
                     writer.writerow(row)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        format="%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s",
+        level=logging.INFO,
+        datefmt="%H:%M:%S",
+    )
     R, T = load_calib()
     for alignment in sys.argv[1:]:
-        process(Path(alignment).resolve(), R, T)
+        process(Path(alignment).resolve(), R)
