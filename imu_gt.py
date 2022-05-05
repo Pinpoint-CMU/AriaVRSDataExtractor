@@ -30,20 +30,27 @@ def load_calib(calib_file=aria_calib_file):
     return rot, np.array(trans)
 
 
-def to_rig(positions, orientations: Rotation):
-    init_orient = orientations[0]
-    init_trans = positions[0]
-    positions -= init_trans
-    positions = init_orient.apply(positions, inverse=True)
-    orientations = init_orient.inv() * orientations
-    return positions, orientations
+def to_aria_frame(orientations: Rotation, gt_orientations: Rotation):
+    R_cam_rgb, _ = load_calib()
+    R_local_cam = gt_orientations
 
+    R_rgb_phone = (
+        Rotation.from_euler("z", 90, degrees=True)
+        * Rotation.from_euler("y", 180, degrees=True)
+        * Rotation.from_euler("x", -45, degrees=True)
+    )
 
-def to_rgb(positions, orientations: Rotation, R: Rotation, T):
-    positions -= T
-    positions = R.apply(positions, inverse=True)
-    orientations = R.inv() * orientations
-    return positions, orientations
+    R_local_phone = R_local_cam * R_cam_rgb * R_rgb_phone
+    R_ios_phone = orientations
+    R_local_ios = R_local_phone * R_ios_phone.inv()
+    R_avg = R_local_ios.as_matrix().mean(axis=0)
+    U, _, V_t = np.linalg.svd(R_avg, full_matrices=True)
+    D_ = np.diag([1, 1, np.linalg.det(U @ V_t)])
+    R_avg = U @ D_ @ V_t
+    R_avg = Rotation.from_matrix(R_avg)
+    R_local_phone = R_avg * R_ios_phone
+
+    return R_local_phone
 
 
 def get_timestamps(gt_data):
@@ -150,12 +157,13 @@ def process(alignment: Path, R: Rotation, T):
             gt_points = get_positions(gt_data)
             gt_orientations = get_orientations(gt_data)
             gt_imu_timestamps, gt_imu = get_gt_imu(gt_imu_data)
-            # gt_points, gt_orientations = to_rig(gt_points, gt_orientations)
-            # gt_points, gt_orientations = to_rgb(gt_points, gt_orientations, R, T)
             curves_x, curves_y, curves_z, curves_orient, curves_gt_imu = interpolate_gt(
                 gt_timestamps, gt_points, gt_orientations, gt_imu_timestamps, gt_imu
             )
             output_data = []
+            output_gt_orient = []
+            output_phone_gyro_orient = []
+            output_phone_mag_orient = []
             for data in imu_data:
                 imu_timestamp = db_to_aria_time(float(data["timestamp"]))
                 idx = np.searchsorted(gt_timestamps, imu_timestamp, side="right")
@@ -178,6 +186,24 @@ def process(alignment: Path, R: Rotation, T):
                     stencilGyroX = curves_gt_imu[3][idx_gt_imu - 1](t_gt_imu)[1]
                     stencilGyroY = curves_gt_imu[4][idx_gt_imu - 1](t_gt_imu)[1]
                     stencilGyroZ = curves_gt_imu[5][idx_gt_imu - 1](t_gt_imu)[1]
+
+                    output_gt_orient.append(orientation)
+                    output_phone_gyro_orient.append(
+                        [
+                            float(data["orientX"]),
+                            float(data["orientY"]),
+                            float(data["orientZ"]),
+                            float(data["orientW"]),
+                        ]
+                    )
+                    output_phone_mag_orient.append(
+                        [
+                            float(data["magOrientX"]),
+                            float(data["magOrientY"]),
+                            float(data["magOrientZ"]),
+                            float(data["magOrientW"]),
+                        ]
+                    )
                     output_data.append(
                         {
                             "timestamp": float(imu_timestamp),
@@ -200,14 +226,6 @@ def process(alignment: Path, R: Rotation, T):
                             "orientX": orientation[0],
                             "orientY": orientation[1],
                             "orientZ": orientation[2],
-                            "phoneGyroOrientW": float(data["orientW"]),
-                            "phoneGyroOrientX": float(data["orientX"]),
-                            "phoneGyroOrientY": float(data["orientY"]),
-                            "phoneGyroOrientZ": float(data["orientZ"]),
-                            "phoneMagOrientW": float(data["magOrientW"]),
-                            "phoneMagOrientX": float(data["magOrientX"]),
-                            "phoneMagOrientY": float(data["magOrientY"]),
-                            "phoneMagOrientZ": float(data["magOrientZ"]),
                             "processedPosX": curves_x[idx - 1](t)[1],
                             "processedPosY": curves_y[idx - 1](t)[1],
                             "processedPosZ": curves_z[idx - 1](t)[1],
@@ -215,6 +233,32 @@ def process(alignment: Path, R: Rotation, T):
                     )
 
             assert len(output_data) > 0
+
+            # rotate phone orientations to aria frame
+            output_gt_orient = Rotation.from_quat(output_gt_orient)
+            output_phone_gyro_orient = Rotation.from_quat(output_phone_gyro_orient)
+            output_phone_mag_orient = Rotation.from_quat(output_phone_mag_orient)
+            output_phone_gyro_orient = to_aria_frame(
+                output_phone_gyro_orient, output_gt_orient
+            ).as_quat()
+            output_phone_mag_orient = to_aria_frame(
+                output_phone_mag_orient, output_gt_orient
+            ).as_quat()
+            for idx, (d, gyro_orient, mag_orient) in enumerate(
+                zip(output_data, output_phone_gyro_orient, output_phone_mag_orient)
+            ):
+                output_data[idx] = {
+                    **d,
+                    "phoneGyroOrientW": gyro_orient[3],
+                    "phoneGyroOrientX": gyro_orient[0],
+                    "phoneGyroOrientY": gyro_orient[1],
+                    "phoneGyroOrientZ": gyro_orient[2],
+                    "phoneMagOrientW": mag_orient[3],
+                    "phoneMagOrientX": mag_orient[0],
+                    "phoneMagOrientY": mag_orient[1],
+                    "phoneMagOrientZ": mag_orient[2],
+                }
+
             outfilename = alignment.parent / f"traj_{truth_idx}.csv"
             print("Writing", len(output_data), "rows to", outfilename)
             with open(alignment.parent / outfilename, "w+") as outfile:
