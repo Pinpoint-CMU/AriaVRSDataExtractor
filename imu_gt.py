@@ -191,22 +191,26 @@ def process(alignment: Path, R: Rotation):
                     stencilGyroY = curves_gt_imu[4][idx_gt_imu - 1](t_gt_imu)[1]
                     stencilGyroZ = curves_gt_imu[5][idx_gt_imu - 1](t_gt_imu)[1]
 
-                    output_gt_orient.append(orientation)
+                    output_gt_orient.append(Rotation.from_quat(orientation))
                     output_phone_gyro_orient.append(
-                        [
-                            float(data["orientX"]),
-                            float(data["orientY"]),
-                            float(data["orientZ"]),
-                            float(data["orientW"]),
-                        ]
+                        Rotation.from_quat(
+                            [
+                                float(data["orientX"]),
+                                float(data["orientY"]),
+                                float(data["orientZ"]),
+                                float(data["orientW"]),
+                            ]
+                        )
                     )
                     output_phone_mag_orient.append(
-                        [
-                            float(data["magOrientX"]),
-                            float(data["magOrientY"]),
-                            float(data["magOrientZ"]),
-                            float(data["magOrientW"]),
-                        ]
+                        Rotation.from_quat(
+                            [
+                                float(data["magOrientX"]),
+                                float(data["magOrientY"]),
+                                float(data["magOrientZ"]),
+                                float(data["magOrientW"]),
+                            ]
+                        )
                     )
                     output_data.append(
                         {
@@ -239,9 +243,9 @@ def process(alignment: Path, R: Rotation):
             assert len(output_data) > 0
 
             logging.info("Rotating phone orientations to aria frame")
-            output_gt_orient = Rotation.from_quat(output_gt_orient)
-            output_phone_gyro_orient = Rotation.from_quat(output_phone_gyro_orient)
-            output_phone_mag_orient = Rotation.from_quat(output_phone_mag_orient)
+            output_gt_orient = Rotation.concatenate(output_gt_orient)
+            output_phone_gyro_orient = Rotation.concatenate(output_phone_gyro_orient)
+            output_phone_mag_orient = Rotation.concatenate(output_phone_mag_orient)
             output_phone_gyro_orient = to_aria_frame(
                 output_phone_gyro_orient, output_gt_orient, R
             ).as_quat()
