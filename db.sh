@@ -22,7 +22,9 @@ do
     raw_magnetic_x as magX, \
     raw_magnetic_y as magY, \
     raw_magnetic_z as magZ \
-    FROM imu;" > "$dir/$filename"_imu.csv
+    FROM imu
+    ORDER BY timestamp
+    ;" > "$dir/$filename"_imu.csv
   sqlite3 "$var" ".tables beac%" | xargs -I {} \
   sqlite3 -header -csv "$var" "SELECT \
     timestamp, \
@@ -32,5 +34,6 @@ do
     FROM {} \
     WHERE major = 10004 \
     AND rssi != 0 \
+    ORDER BY timestamp
     ;" > "$dir/$filename"_ble.csv
 done
