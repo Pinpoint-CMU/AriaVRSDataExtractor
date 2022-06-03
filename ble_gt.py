@@ -103,7 +103,7 @@ def process(alignment: Path):
                         [f"{b['minor']},{b['rssi']}" for b in data["ble"]]
                     )
                     output_data.append(
-                        f"{curves_x[idx - 1](t)[1]},{curves_y[idx - 1](t)[1]},{curves_z[idx - 1](t)[1]}:{beacon_str}"
+                        f"{ble_timestamp}:{curves_x[idx - 1](t)[1]},{curves_y[idx - 1](t)[1]},{curves_z[idx - 1](t)[1]}:{beacon_str}"
                     )
 
             assert len(output_data) > 0
