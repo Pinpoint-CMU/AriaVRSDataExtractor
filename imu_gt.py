@@ -32,6 +32,25 @@ def load_calib(calib_file=aria_calib_file):
     return rot, np.array(trans)
 
 
+def to_rig(positions, orientations: Rotation):
+    init_orient = orientations[0]
+    init_trans = positions[0]
+    positions -= init_trans
+    positions = init_orient.apply(positions, inverse=True)
+    orientations = init_orient.inv() * orientations
+    return positions, orientations
+
+
+def to_rgb(positions, orientations: Rotation, R: Rotation, T):
+    positions -= T
+    positions = R.apply(positions, inverse=True)
+    orientations = R.inv() * orientations
+    R_ref_rgb = Rotation.from_euler("y", 90, degrees=True)
+    positions = R_ref_rgb.apply(positions)
+    orientations = R_ref_rgb * orientations
+    return positions, orientations
+
+
 def to_aria_frame(orientations: Rotation, gt_orientations: Rotation, R_cam_rgb):
     R_local_cam = gt_orientations
 
@@ -120,9 +139,10 @@ def interpolate_gt(
     return curves_x, curves_y, curves_z, curves_orient, curves_imu
 
 
-def process(alignment: Path, R: Rotation):
+def process(alignment: Path, R: Rotation, T):
     with open(alignment, "r") as alignment_file:
-        alignment_reader = csv.DictReader(alignment_file, skipinitialspace=True)
+        alignment_reader = csv.DictReader(
+            alignment_file, skipinitialspace=True)
         for truth_idx, match in enumerate(alignment_reader):
             db_file, aria_file, scale, offset, db_offset, aria_offset = (
                 match[key]
@@ -153,7 +173,8 @@ def process(alignment: Path, R: Rotation):
                 imu_data.extend([row for row in imu_reader])
                 gt_reader = csv.DictReader(gt_csv, skipinitialspace=True)
                 gt_data.extend([row for row in gt_reader])
-                gt_imu_reader = csv.DictReader(gt_imu_csv, skipinitialspace=True)
+                gt_imu_reader = csv.DictReader(
+                    gt_imu_csv, skipinitialspace=True)
                 gt_imu_data.extend([row for row in gt_imu_reader])
 
             logging.info("Interpolating data")
@@ -161,6 +182,9 @@ def process(alignment: Path, R: Rotation):
             gt_points = get_positions(gt_data)
             gt_orientations = get_orientations(gt_data)
             gt_imu_timestamps, gt_imu = get_gt_imu(gt_imu_data)
+            gt_points, gt_orientations = to_rig(gt_points, gt_orientations)
+            gt_points, gt_orientations = to_rgb(
+                gt_points, gt_orientations, R, T)
             curves_x, curves_y, curves_z, curves_orient, curves_gt_imu = interpolate_gt(
                 gt_timestamps, gt_points, gt_orientations, gt_imu_timestamps, gt_imu
             )
@@ -170,7 +194,8 @@ def process(alignment: Path, R: Rotation):
             output_phone_mag_orient = []
             for data in tqdm(imu_data):
                 imu_timestamp = db_to_aria_time(float(data["timestamp"]))
-                idx = np.searchsorted(gt_timestamps, imu_timestamp, side="right")
+                idx = np.searchsorted(
+                    gt_timestamps, imu_timestamp, side="right")
                 idx_gt_imu = np.searchsorted(
                     gt_imu_timestamps, imu_timestamp, side="right"
                 )
@@ -187,9 +212,12 @@ def process(alignment: Path, R: Rotation):
                     stencilAccX = curves_gt_imu[0][idx_gt_imu - 1](t_gt_imu)[1]
                     stencilAccY = curves_gt_imu[1][idx_gt_imu - 1](t_gt_imu)[1]
                     stencilAccZ = curves_gt_imu[2][idx_gt_imu - 1](t_gt_imu)[1]
-                    stencilGyroX = curves_gt_imu[3][idx_gt_imu - 1](t_gt_imu)[1]
-                    stencilGyroY = curves_gt_imu[4][idx_gt_imu - 1](t_gt_imu)[1]
-                    stencilGyroZ = curves_gt_imu[5][idx_gt_imu - 1](t_gt_imu)[1]
+                    stencilGyroX = curves_gt_imu[3][idx_gt_imu - 1](t_gt_imu)[
+                        1]
+                    stencilGyroY = curves_gt_imu[4][idx_gt_imu - 1](t_gt_imu)[
+                        1]
+                    stencilGyroZ = curves_gt_imu[5][idx_gt_imu - 1](t_gt_imu)[
+                        1]
 
                     output_gt_orient.append(Rotation.from_quat(orientation))
                     output_phone_gyro_orient.append(
@@ -244,14 +272,17 @@ def process(alignment: Path, R: Rotation):
 
             logging.info("Rotating phone orientations to aria frame")
             output_gt_orient = Rotation.concatenate(output_gt_orient)
-            output_phone_gyro_orient = Rotation.concatenate(output_phone_gyro_orient)
-            output_phone_mag_orient = Rotation.concatenate(output_phone_mag_orient)
+            output_phone_gyro_orient = Rotation.concatenate(
+                output_phone_gyro_orient)
+            output_phone_mag_orient = Rotation.concatenate(
+                output_phone_mag_orient)
             output_phone_gyro_orient = to_aria_frame(
                 output_phone_gyro_orient, output_gt_orient, R
             ).as_quat()
             output_phone_mag_orient = to_aria_frame(
                 output_phone_mag_orient, output_gt_orient, R
             ).as_quat()
+
             for idx, (d, gyro_orient, mag_orient) in enumerate(
                 zip(output_data, output_phone_gyro_orient, output_phone_mag_orient)
             ):
@@ -270,7 +301,8 @@ def process(alignment: Path, R: Rotation):
             outfilename = alignment.parent / f"traj_{truth_idx}.csv"
             logging.info(f"Writing {len(output_data)} rows to {outfilename}")
             with open(alignment.parent / outfilename, "w+") as outfile:
-                writer = csv.DictWriter(outfile, fieldnames=list(output_data[0].keys()))
+                writer = csv.DictWriter(
+                    outfile, fieldnames=list(output_data[0].keys()))
                 writer.writeheader()
                 for row in tqdm(output_data):
                     writer.writerow(row)
@@ -284,4 +316,4 @@ if __name__ == "__main__":
     )
     R, T = load_calib()
     for alignment in sys.argv[1:]:
-        process(Path(alignment).resolve(), R)
+        process(Path(alignment).resolve(), R, T)

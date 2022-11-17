@@ -18,19 +18,13 @@ if __name__ == "__main__":
     test_data = data[train_split + val_split :]
 
     dir = files[0].parent / (str(files[0].parent.name) + "_vvk")
-    train_dir = dir / "train"
-    val_dir = dir / "val"
-    test_dir = dir / "test"
     os.makedirs(dir, exist_ok=True)
-    os.makedirs(train_dir, exist_ok=True)
-    os.makedirs(val_dir, exist_ok=True)
-    os.makedirs(test_dir, exist_ok=True)
 
-    with open(train_dir / "traj_0.vvk", "w+") as outfile:
+    with open(dir / "train.vvk", "w+") as outfile:
         outfile.writelines(train_data)
 
-    with open(val_dir / "traj_0.vvk", "w+") as outfile:
+    with open(dir / "val.vvk", "w+") as outfile:
         outfile.writelines(val_data)
 
-    with open(test_dir / "traj_0.vvk", "w+") as outfile:
+    with open(dir / "test.vvk", "w+") as outfile:
         outfile.writelines(test_data)

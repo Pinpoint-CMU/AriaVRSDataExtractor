@@ -1,43 +1,96 @@
 import csv
+import json
 import sys
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
+from scipy.spatial.transform import Rotation
 
 from bezier import get_bezier_cubic
 
-
-def interpolate_gt(gt_data):
-    gt_timestamps = np.array([float(row["#timestamp"]) for row in gt_data])
-    gt_points_x = np.stack(
-        [
-            gt_timestamps,
-            np.array([float(row["p_RS_R_x [m]"]) for row in gt_data]),
-        ],
-        axis=-1,
-    )
-    gt_points_y = np.stack(
-        [
-            gt_timestamps,
-            np.array([float(row["p_RS_R_y [m]"]) for row in gt_data]),
-        ],
-        axis=-1,
-    )
-    gt_points_z = np.stack(
-        [
-            gt_timestamps,
-            np.array([float(row["p_RS_R_z [m]"]) for row in gt_data]),
-        ],
-        axis=-1,
-    )
-    curves_x = get_bezier_cubic(gt_points_x)
-    curves_y = get_bezier_cubic(gt_points_y)
-    curves_z = get_bezier_cubic(gt_points_z)
-    return curves_x, curves_y, curves_z, gt_timestamps
+aria_calib_file = Path("./1WM093700U1171_473758244165429.json").resolve()
 
 
-def process(alignment: Path):
+def load_calib(calib_file=aria_calib_file):
+    calibration_info = json.load(open(calib_file, "r"))
+    assert (
+        calibration_info["OriginSpecification"]["ChildLabel"] == "camera-slam-left"
+    ), calibration_info["OriginSpecification"]["ChildLabel"]
+    rgb = calibration_info["CameraCalibrations"][
+        [
+            i
+            for i, _ in enumerate(calibration_info["CameraCalibrations"])
+            if _["Label"] == "camera-rgb"
+        ][0]
+    ]
+    assert rgb["Calibrated"] == True, rgb
+    trans = rgb["T_Device_Camera"]["Translation"]
+    rot = rgb["T_Device_Camera"]["UnitQuaternion"]
+    rot = Rotation.from_quat([*rot[1], rot[0]])
+    return rot, np.array(trans)
+
+
+def to_rig(positions, orientations: Rotation):
+    init_orient = orientations[0]
+    init_trans = positions[0]
+    positions -= init_trans
+    positions = init_orient.apply(positions, inverse=True)
+    orientations = init_orient.inv() * orientations
+    return positions, orientations
+
+
+def to_rgb(positions, orientations: Rotation, R: Rotation, T):
+    positions -= T
+    positions = R.apply(positions, inverse=True)
+    orientations = R.inv() * orientations
+    R_ref_rgb = Rotation.from_euler("y", 90, degrees=True)
+    positions = R_ref_rgb.apply(positions)
+    orientations = R_ref_rgb * orientations
+    return positions, orientations
+
+
+def get_timestamps(gt_data):
+    return np.array([float(row["#timestamp"]) for row in gt_data])
+
+
+def get_positions(gt_data):
+    return np.array(
+        [
+            [
+                float(row["p_RS_R_x [m]"]),
+                float(row["p_RS_R_y [m]"]),
+                float(row["p_RS_R_z [m]"]),
+            ]
+            for row in gt_data
+        ]
+    )
+
+
+def get_orientations(gt_data):
+    return Rotation.from_quat(
+        np.array(
+            [
+                [
+                    float(row["q_RS_x []"]),
+                    float(row["q_RS_y []"]),
+                    float(row["q_RS_z []"]),
+                    float(row["q_RS_w []"]),
+                ]
+                for row in gt_data
+            ]
+        )
+    )
+
+
+def interpolate_gt(timestamps, points):
+    curves_x = get_bezier_cubic(np.stack([timestamps, points[:, 0]], axis=-1))
+    curves_y = get_bezier_cubic(np.stack([timestamps, points[:, 1]], axis=-1))
+    curves_z = get_bezier_cubic(np.stack([timestamps, points[:, 2]], axis=-1))
+    return curves_x, curves_y, curves_z
+
+
+def process(alignment: Path, R: Rotation, T):
     with open(alignment, "r") as alignment_file:
         alignment_reader = csv.DictReader(alignment_file, skipinitialspace=True)
         for truth_idx, match in enumerate(alignment_reader):
@@ -89,7 +142,12 @@ def process(alignment: Path):
                         }
                     )
 
-            curves_x, curves_y, curves_z, gt_timestamps = interpolate_gt(gt_data)
+            gt_timestamps = get_timestamps(gt_data)
+            gt_points = get_positions(gt_data)
+            gt_orientations = get_orientations(gt_data)
+            gt_points, gt_orientations = to_rig(gt_points, gt_orientations)
+            gt_points, gt_orientations = to_rgb(gt_points, gt_orientations, R, T)
+            curves_x, curves_y, curves_z = interpolate_gt(gt_timestamps, gt_points)
             output_data = []
             for data in ble_data:
                 ble_timestamp = db_to_aria_time(float(data["timestamp"]))
@@ -115,5 +173,6 @@ def process(alignment: Path):
 
 
 if __name__ == "__main__":
+    R, T = load_calib()
     for alignment in sys.argv[1:]:
-        process(Path(alignment).resolve())
+        process(Path(alignment).resolve(), R, T)
